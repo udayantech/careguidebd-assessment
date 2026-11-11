@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.title="devops-service-nodejs" \
 WORKDIR /usr/src/app
 
 # Install curl for reliable container health check
-RUN apk add --no-cache curl=8.7.1-r0
+RUN apk add --no-cache curl
 
 # Copy node_modules and app code from builder
 COPY --from=builder --chown=node:node /usr/src/app/node_modules ./node_modules
