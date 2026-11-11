@@ -10,7 +10,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Install all dependencies (including dev for building/pruning)
-RUN npm ci
+RUN npm install
 
 COPY . .
 
