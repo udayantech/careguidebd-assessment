@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write # Required for AWS OIDC to execute SSM commands
+  id-token: write
   contents: read
 
 env:
@@ -18,7 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
-      full_image_name: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -78,13 +77,12 @@ jobs:
       - name: Deploy Image to EC2 and Execute Rollback on Failure
         run: |
           INSTANCE_ID="${{ secrets.EC2_INSTANCE_ID }}"
-          TARGET_IMAGE="${{ needs.build-and-push.outputs.full_image_name }}:${{ needs.build-and-push.outputs.image_tag }}"
+          TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }}"
           DH_USER="${{ secrets.DOCKERHUB_USERNAME }}"
           DH_TOKEN="${{ secrets.DOCKERHUB_TOKEN }}"
 
           echo "Dispatching deployment command to EC2 target: $INSTANCE_ID"
 
-          # Deployment shell script executed on the EC2 instance
           COMMAND_PAYLOAD=$(cat << 'EOF'
           set -e
 
@@ -96,7 +94,6 @@ jobs:
           echo "Authenticating instance Docker daemon against Docker Hub..."
           echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
 
-          # Store previous image tag for instant rollback
           CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
 
           echo "Pulling candidate image: $IMAGE..."
@@ -156,12 +153,10 @@ jobs:
           EOF
           )
 
-          # Substitute variables safely
           COMMAND_PAYLOAD="${COMMAND_PAYLOAD//\{\{TARGET_IMAGE\}\}/$TARGET_IMAGE}"
           COMMAND_PAYLOAD="${COMMAND_PAYLOAD//\{\{DH_USER\}\}/$DH_USER}"
           COMMAND_PAYLOAD="${COMMAND_PAYLOAD//\{\{DH_TOKEN\}\}/$DH_TOKEN}"
 
-          # Send Command via AWS SSM Run Command
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
