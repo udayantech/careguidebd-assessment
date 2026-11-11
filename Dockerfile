@@ -3,24 +3,20 @@
 # -------------------------------------------------------------
 # Stage 1: Build & Dependencies
 # -------------------------------------------------------------
-FROM node:20.14.0-alpine3.20 AS builder
+FROM node:20-alpine3.20 AS builder
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-
-# Install all dependencies (including dev for building/pruning)
 RUN npm install
 
 COPY . .
-
-# Prune devDependencies to keep only runtime requirements
 RUN npm prune --omit=dev
 
 # -------------------------------------------------------------
-# Stage 2: Final Minimal Runtime
+# Stage 2: Final Minimal & Hardened Runtime
 # -------------------------------------------------------------
-FROM node:20.14.0-alpine3.20
+FROM node:20-alpine3.20
 
 ARG BUILD_DATE
 ARG VCS_REF
@@ -36,10 +32,15 @@ LABEL org.opencontainers.image.title="devops-service-nodejs" \
 
 WORKDIR /usr/src/app
 
-# Install curl for reliable container health check
-RUN apk add --no-cache curl
+# 1. Upgrade base OS packages to patch OpenSSL/libcrypto3
+# 2. Install curl for healthcheck
+# 3. Remove pre-bundled Yarn and npm from final image to clear bundled CVEs (tar)
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache curl && \
+    rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /opt/yarn* /usr/local/bin/yarn*
 
-# Copy node_modules and app code from builder
+# Copy production node_modules and app code from builder
 COPY --from=builder --chown=node:node /usr/src/app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /usr/src/app/src ./src
 COPY --from=builder --chown=node:node /usr/src/app/package.json ./package.json
@@ -48,7 +49,7 @@ ENV NODE_ENV=production \
     APP_PORT=8080 \
     APP_VERSION=${VERSION}
 
-# Use the pre-existing unprivileged node user (UID: 1000)
+# Run as non-root user
 USER node
 
 EXPOSE 8080
