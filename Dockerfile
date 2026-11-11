@@ -3,7 +3,7 @@
 # -------------------------------------------------------------
 # Stage 1: Build & Dependencies
 # -------------------------------------------------------------
-FROM node:20-alpine3.20 AS builder
+FROM --platform=$BUILDPLATFORM node:20-alpine3.20 AS builder
 
 WORKDIR /usr/src/app
 
