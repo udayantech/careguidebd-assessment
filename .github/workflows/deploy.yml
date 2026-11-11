@@ -75,6 +75,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          role-skip-session-tagging: true
 
       - name: Deploy Image to EC2 and Execute Rollback on Failure
         run: |
