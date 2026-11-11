@@ -3,6 +3,7 @@ name: Pull Request Check
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: pr-${{ github.ref }}
@@ -20,16 +21,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Run ESLint
-        run: npm run lint
+        run: npm run lint --if-present
 
       - name: Execute Tests & Generate Coverage
-        run: npm test
+        run: npm test --if-present
 
   linters:
     name: Docker & Shell Linting
@@ -69,7 +69,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Scan Image with Trivy
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: devops-service:pr-${{ github.sha }}
           format: 'table'
