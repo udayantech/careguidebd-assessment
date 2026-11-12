@@ -70,6 +70,44 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Verify AWS Account and Region
+        run: |
+          echo "===== AWS Identity ====="
+          aws sts get-caller-identity
+      
+          echo "===== AWS Region ====="
+          echo "$AWS_REGION"
+      
+      - name: Diagnose EC2 and SSM Instance
+        run: |
+          INSTANCE_ID="${{ secrets.EC2_INSTANCE_ID }}"
+      
+          echo "Checking EC2 instance: $INSTANCE_ID"
+      
+          echo "===== EC2 Instance Status ====="
+          aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --region "$AWS_REGION" \
+            --query 'Reservations[].Instances[].{
+              InstanceId:InstanceId,
+              State:State.Name,
+              Region:Placement.AvailabilityZone,
+              IAMProfile:IamInstanceProfile.Arn
+            }' \
+            --output table
+      
+          echo "===== SSM Registration Status ====="
+          aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --region "$AWS_REGION" \
+            --query 'InstanceInformationList[].{
+              InstanceId:InstanceId,
+              PingStatus:PingStatus,
+              AgentVersion:AgentVersion,
+              Platform:PlatformName
+            }' \
+            --output table
+
       - name: Debug GitHub OIDC Claims
         shell: bash
         run: |
