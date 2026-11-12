@@ -70,6 +70,12 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-skip-session-tagging: true
       - name: Verify AWS Account and Region
         run: |
           echo "===== AWS Identity ====="
@@ -136,12 +142,7 @@ jobs:
             for key in ['iss', 'aud', 'sub', 'repository', 'ref']:
                 print(f"{key}: {claims.get(key)}")
             PY
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-          role-skip-session-tagging: true
+      
 
       - name: Deploy Image to EC2 and Execute Rollback on Failure
         run: |
