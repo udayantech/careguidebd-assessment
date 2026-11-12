@@ -143,66 +143,44 @@ jobs:
                 print(f"{key}: {claims.get(key)}")
             PY
       
-
       - name: Deploy Image to EC2 and Execute Rollback on Failure
+        id: deploy
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          TARGET_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          AWS_PAGER: ""
         run: |
-          INSTANCE_ID="${{ secrets.EC2_INSTANCE_ID }}"
-          TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }}"
-          DH_USER="${{ secrets.DOCKERHUB_USERNAME }}"
-          DH_TOKEN="${{ secrets.DOCKERHUB_TOKEN }}"
+          set -euo pipefail
 
-          echo "Dispatching deployment command to EC2 target: $INSTANCE_ID"
+          echo "Dispatching deployment to EC2: $INSTANCE_ID"
 
-          COMMAND_PAYLOAD=$(cat << 'EOF'
-          set -e
+          # Build the deployment script locally.
+          DEPLOY_SCRIPT=$(cat <<'SCRIPT'
+          set -Eeuo pipefail
 
-          IMAGE="{{TARGET_IMAGE}}"
-          DH_USER="{{DH_USER}}"
-          DH_TOKEN="{{DH_TOKEN}}"
+          IMAGE="${IMAGE:?IMAGE is missing}"
+          DH_USER="${DH_USER:?Docker Hub username is missing}"
+          DH_TOKEN="${DH_TOKEN:?Docker Hub token is missing}"
           CONTAINER_NAME="devops-service"
 
-          echo "Authenticating instance Docker daemon against Docker Hub..."
+          echo "Authenticating Docker with Docker Hub..."
           echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
 
-          CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
+          echo "Checking currently deployed image..."
+          CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)
 
-          echo "Pulling candidate image: $IMAGE..."
+          echo "Pulling candidate image: $IMAGE"
           docker pull "$IMAGE"
 
-          echo "Stopping old container..."
-          docker stop "$CONTAINER_NAME" 2>/dev/null || true
-          docker rm "$CONTAINER_NAME" 2>/dev/null || true
-
-          echo "Starting updated container..."
-          docker run -d \
-            --name "$CONTAINER_NAME" \
-            --restart unless-stopped \
-            -p 8080:8080 \
-            -e APP_PORT=8080 \
-            -e APP_LOG_LEVEL=info \
-            -e NODE_ENV=production \
-            "$IMAGE"
-
-          echo "Running Smoke Test against /health endpoint..."
-          SUCCESS=0
-          for attempt in $(seq 1 10); do
-            if curl -s -f http://127.0.0.1:8080/health | grep -q '"status":"UP"'; then
-              echo "Smoke test passed on attempt $attempt!"
-              SUCCESS=1
-              break
-            fi
-            echo "Waiting for service readiness (attempt $attempt/10)..."
-            sleep 3
-          done
-
-          if [ $SUCCESS -ne 1 ]; then
-            echo "Smoke test failed! Reverting to previous state..."
-            docker logs --tail 50 "$CONTAINER_NAME"
-            docker stop "$CONTAINER_NAME" || true
-            docker rm "$CONTAINER_NAME" || true
+          rollback() {
+            echo "Restoring previous deployment..."
+            docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
             if [ -n "$CURRENT_IMAGE" ]; then
-              echo "Executing rollback to: $CURRENT_IMAGE"
+              echo "Rolling back to: $CURRENT_IMAGE"
+
               docker run -d \
                 --name "$CONTAINER_NAME" \
                 --restart unless-stopped \
@@ -211,61 +189,122 @@ jobs:
                 -e APP_LOG_LEVEL=info \
                 -e NODE_ENV=production \
                 "$CURRENT_IMAGE"
-              echo "Rollback succeeded."
+
+              echo "Rollback completed."
             else
-              echo "Warning: No previous image found to rollback to."
+              echo "No previous image available for rollback."
             fi
+          }
+
+          echo "Removing previous container..."
+          docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+
+          echo "Starting updated container..."
+          if ! docker run -d \
+            --name "$CONTAINER_NAME" \
+            --restart unless-stopped \
+            -p 8080:8080 \
+            -e APP_PORT=8080 \
+            -e APP_LOG_LEVEL=info \
+            -e NODE_ENV=production \
+            "$IMAGE"; then
+
+            echo "New container failed to start."
+            rollback
             exit 1
           fi
 
-          echo "Pruning untagged images..."
+          echo "Checking application health..."
+          SUCCESS=0
+
+          for attempt in $(seq 1 10); do
+            if curl -fsS http://127.0.0.1:8080/health 2>/dev/null | grep -q '"status":"UP"'; then
+              echo "Health check passed on attempt $attempt."
+              SUCCESS=1
+              break
+            fi
+
+            echo "Waiting for application readiness ($attempt/10)..."
+            sleep 3
+          done
+
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "Health check failed."
+            docker logs --tail 50 "$CONTAINER_NAME" || true
+            rollback
+            exit 1
+          fi
+
+          echo "Pruning unused Docker images..."
           docker image prune -f
-          EOF
+
+          echo "Deployment completed successfully."
+          SCRIPT
           )
 
-          COMMAND_PAYLOAD="${COMMAND_PAYLOAD//\{\{TARGET_IMAGE\}\}/$TARGET_IMAGE}"
-          COMMAND_PAYLOAD="${COMMAND_PAYLOAD//\{\{DH_USER\}\}/$DH_USER}"
-          COMMAND_PAYLOAD="${COMMAND_PAYLOAD//\{\{DH_TOKEN\}\}/$DH_TOKEN}"
+          # Quote values safely for the remote POSIX shell.
+          Q_IMAGE=$(jq -nr --arg v "$TARGET_IMAGE" '$v | @sh')
+          Q_USER=$(jq -nr --arg v "$DH_USER" '$v | @sh')
+          Q_TOKEN=$(jq -nr --arg v "$DH_TOKEN" '$v | @sh')
+
+          # Explicitly execute the deployment script using Bash.
+          REMOTE_COMMAND="IMAGE=$Q_IMAGE DH_USER=$Q_USER DH_TOKEN=$Q_TOKEN bash -s <<'SSM_SCRIPT'
+          $DEPLOY_SCRIPT
+          SSM_SCRIPT"
+
+          # Generate valid JSON for the SSM commands parameter.
+          PARAMETERS=$(jq -n --arg command "$REMOTE_COMMAND" \
+            '{commands: [$command]}')
+
+          echo "Sending deployment command to SSM..."
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[$(echo "$COMMAND_PAYLOAD" | jq -sR .)]" \
-            --query "Command.CommandId" \
+            --parameters "$PARAMETERS" \
+            --timeout-seconds 600 \
+            --region "$AWS_REGION" \
+            --query 'Command.CommandId' \
             --output text)
 
-          echo "SSM Command sent. Execution ID: $COMMAND_ID. Waiting for output..."
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
 
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID"
+          echo "SSM Command ID: $COMMAND_ID"
+          echo "Waiting for deployment execution..."
 
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query "Status" \
-            --output text)
-
-          OUTPUT=$(aws ssm get-command-invocation \
+          # Do not exit immediately when the SSM waiter reports failure.
+          if ! aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id "$INSTANCE_ID" \
-            --query "StandardOutputContent" \
-            --output text)
+            --region "$AWS_REGION"; then
+            echo "SSM waiter reported deployment failure."
+          fi
 
-          STDERR=$(aws ssm get-command-invocation \
+          # Retrieve the actual execution result.
+          INVOCATION=$(aws ssm get-command-invocation \
             --command-id "$COMMAND_ID" \
             --instance-id "$INSTANCE_ID" \
-            --query "StandardErrorContent" \
-            --output text)
+            --region "$AWS_REGION" \
+            --output json)
 
-          echo "===== SSM Standard Output ====="
-          echo "$OUTPUT"
+          STATUS=$(echo "$INVOCATION" | jq -r '.Status')
+          EXIT_CODE=$(echo "$INVOCATION" | jq -r '.ResponseCode')
+
+          echo "================================"
+          echo "Deployment status: $STATUS"
+          echo "Exit code: $EXIT_CODE"
+          echo "================================"
+
+          echo "$INVOCATION" | jq -r '.StandardOutputContent // ""'
 
           if [ "$STATUS" != "Success" ]; then
-            echo "===== SSM Standard Error ====="
-            echo "$STDERR"
-            echo "Deployment FAILED with status: $STATUS"
+            echo "===== SSM ERROR OUTPUT ====="
+            echo "$INVOCATION" | jq -r '.StandardErrorContent // ""'
+            echo "Deployment FAILED."
             exit 1
           fi
 
-          echo "Deployment and verification completed successfully."
+          echo "Deployment and health verification completed successfully."
+
+
+     
