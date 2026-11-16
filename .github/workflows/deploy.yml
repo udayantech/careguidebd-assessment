@@ -89,139 +89,142 @@ jobs:
 
           echo "Dispatching full-stack deployment to EC2: $INSTANCE_ID"
 
-          DEPLOY_SCRIPT=$(cat <<'SCRIPT'
-set -Eeuo pipefail
+          # Python script to safely construct the SSM payload without any bash heredoc issues
+          python3 - << 'PYEOF'
+          import json
+          import os
+          import subprocess
 
-IMAGE="${IMAGE:?IMAGE is missing}"
-DH_USER="${DH_USER:?Docker Hub username is missing}"
-DH_TOKEN="${DH_TOKEN:?Docker Hub token is missing}"
-APP_DIR="/opt/devops-stack"
+          instance_id = os.environ["INSTANCE_ID"]
+          target_image = os.environ["TARGET_IMAGE"]
+          dh_user = os.environ["DH_USER"]
+          dh_token = os.environ["DH_TOKEN"]
+          aws_region = os.environ["AWS_REGION"]
 
-echo "1. Ensuring 2GB Swap Memory (prevents OOM crash)..."
-if [ ! -f /swapfile ]; then
-  dd if=/dev/zero of=/swapfile bs=1M count=2048
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
-  echo '/swapfile none swap sw 0 0' >> /etc/fstab
-  echo "Swap file created successfully."
-fi
+          remote_script = f"""#!/bin/bash
+          set -euo pipefail
 
-echo "2. Installing git and Docker Compose plugin if missing..."
-if command -v apt-get >/dev/null 2>&1; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y && apt-get install -y git curl
-elif command -v dnf >/dev/null 2>&1; then
-  dnf install -y git curl
-elif command -v yum >/dev/null 2>&1; then
-  yum install -y git curl
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  echo "Installing standalone Docker Compose CLI plugin..."
-  mkdir -p /usr/local/lib/docker/cli-plugins
-  curl -sSL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
-  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-fi
-
-echo "3. Authenticating with Docker Hub..."
-echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
-
-echo "4. Syncing project repository to EC2..."
-if [ ! -d "$APP_DIR" ]; then
-  git clone https://github.com/udayantech/careguidebd-assessment.git "$APP_DIR"
-else
-  cd "$APP_DIR"
-  git reset --hard
-  git pull origin main
-fi
-
-cd "$APP_DIR"
-
-echo "5. Updating container image reference..."
-export TARGET_IMAGE="$IMAGE"
-echo "TARGET_IMAGE=$IMAGE" > .env
-echo "GRAFANA_ADMIN_USER=admin" >> .env
-echo "GRAFANA_ADMIN_PASSWORD=AdminSecure2024!" >> .env
-
-docker rm -f devops-service 2>/dev/null || true
-
-echo "6. Pulling latest images for all monitoring services..."
-docker pull "$IMAGE"
-docker compose -f docker-compose.monitoring.yml pull
-
-echo "7. Launching full monitoring & app stack..."
-docker compose -f docker-compose.monitoring.yml up -d
-
-echo "8. Running Smoke Test against /health endpoint..."
-SUCCESS=0
-for attempt in $(seq 1 15); do
-  if curl -fsS http://127.0.0.1:8080/health 2>/dev/null | grep -q '"status":"UP"'; then
-    echo "Smoke test passed on attempt $attempt."
-    SUCCESS=1
-    break
-  fi
-  echo "Waiting for stack readiness (attempt $attempt/15)..."
-  sleep 4
-done
-
-if [ "$SUCCESS" -ne 1 ]; then
-  echo "Health check failed! Printing container logs..."
-  docker compose -f docker-compose.monitoring.yml logs --tail 50
-  exit 1
-fi
-
-echo "Pruning dangling images..."
-docker image prune -f
-
-echo "Full Stack deployed and healthy!"
-SCRIPT
-)
-
-          Q_IMAGE=$(jq -nr --arg v "$TARGET_IMAGE" '$v | @sh')
-          Q_USER=$(jq -nr --arg v "$DH_USER" '$v | @sh')
-          Q_TOKEN=$(jq -nr --arg v "$DH_TOKEN" '$v | @sh')
-
-          REMOTE_COMMAND="IMAGE=$Q_IMAGE DH_USER=$Q_USER DH_TOKEN=$Q_TOKEN bash -s <<'SSM_SCRIPT'
-$DEPLOY_SCRIPT
-SSM_SCRIPT"
-
-          PARAMETERS=$(jq -n --arg command "$REMOTE_COMMAND" '{commands: [$command]}')
-
-          echo "Sending deployment command to SSM..."
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "$PARAMETERS" \
-            --timeout-seconds 600 \
-            --region "$AWS_REGION" \
-            --query 'Command.CommandId' \
-            --output text)
-
-          echo "SSM Command ID: $COMMAND_ID. Waiting for execution..."
-
-          if ! aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --region "$AWS_REGION"; then
-            echo "SSM waiter finished."
+          echo "1. Ensuring 2GB Swap Memory..."
+          if [ ! -f /swapfile ]; then
+            dd if=/dev/zero of=/swapfile bs=1M count=2048
+            chmod 600 /swapfile
+            mkswap /swapfile
+            swapon /swapfile
+            echo '/swapfile none swap sw 0 0' >> /etc/fstab
+            echo "Swap file created."
           fi
 
-          INVOCATION=$(aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --region "$AWS_REGION" \
-            --output json)
+          echo "2. Installing git and curl if missing..."
+          if command -v apt-get >/dev/null 2>&1; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y && apt-get install -y git curl
+          elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y git curl
+          elif command -v yum >/dev/null 2>&1; then
+            yum install -y git curl
+          fi
 
-          STATUS=$(echo "$INVOCATION" | jq -r '.Status')
-          echo "=== SSM Output ==="
-          echo "$INVOCATION" | jq -r '.StandardOutputContent // ""'
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "Installing Docker Compose CLI plugin..."
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            curl -sSL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          fi
 
-          if [ "$STATUS" != "Success" ]; then
-            echo "=== SSM Errors ==="
-            echo "$INVOCATION" | jq -r '.StandardErrorContent // ""'
-            echo "Deployment FAILED."
+          echo "3. Authenticating with Docker Hub..."
+          echo "{dh_token}" | docker login -u "{dh_user}" --password-stdin
+
+          echo "4. Syncing project repository to EC2..."
+          APP_DIR="/opt/devops-stack"
+          if [ ! -d "$APP_DIR" ]; then
+            git clone https://github.com/udayantech/careguidebd-assessment.git "$APP_DIR"
+          else
+            cd "$APP_DIR"
+            git reset --hard
+            git pull origin main
+          fi
+
+          cd "$APP_DIR"
+
+          echo "5. Updating environment configuration..."
+          echo "TARGET_IMAGE={target_image}" > .env
+          echo "GRAFANA_ADMIN_USER=admin" >> .env
+          echo "GRAFANA_ADMIN_PASSWORD=AdminSecure2024!" >> .env
+
+          docker rm -f devops-service 2>/dev/null || true
+
+          echo "6. Pulling latest images..."
+          docker pull "{target_image}"
+          docker compose -f docker-compose.monitoring.yml pull
+
+          echo "7. Starting all monitoring & app containers..."
+          docker compose -f docker-compose.monitoring.yml up -d
+
+          echo "8. Running Smoke Test against /health endpoint..."
+          SUCCESS=0
+          for attempt in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:8080/health 2>/dev/null | grep -q '"status":"UP"'; then
+              echo "Smoke test passed on attempt $attempt."
+              SUCCESS=1
+              break
+            fi
+            echo "Waiting for stack readiness ($attempt/15)..."
+            sleep 4
+          done
+
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "Health check failed! Container logs:"
+            docker compose -f docker-compose.monitoring.yml logs --tail 50
             exit 1
           fi
 
-          echo "Deployment completed successfully!"
+          docker image prune -f
+          echo "Full Stack deployed and healthy!"
+          """
+
+          parameters = json.dumps({"commands": [remote_script]})
+
+          send_cmd = [
+              "aws", "ssm", "send-command",
+              "--instance-ids", instance_id,
+              "--document-name", "AWS-RunShellScript",
+              "--parameters", parameters,
+              "--timeout-seconds", "600",
+              "--region", aws_region,
+              "--query", "Command.CommandId",
+              "--output", "text"
+          ]
+
+          cmd_id = subprocess.check_output(send_cmd).decode().strip()
+          print(f"SSM Command ID: {cmd_id}. Waiting for execution...")
+
+          subprocess.run([
+              "aws", "ssm", "wait", "command-executed",
+              "--command-id", cmd_id,
+              "--instance-id", instance_id,
+              "--region", aws_region
+          ])
+
+          inv = subprocess.check_output([
+              "aws", "ssm", "get-command-invocation",
+              "--command-id", cmd_id,
+              "--instance-id", instance_id,
+              "--region", aws_region,
+              "--output", "json"
+          ])
+
+          data = json.loads(inv.decode())
+          status = data.get("Status", "Failed")
+          stdout = data.get("StandardOutputContent", "")
+          stderr = data.get("StandardErrorContent", "")
+
+          print("=== SSM Output ===")
+          print(stdout)
+
+          if status != "Success":
+              print("=== SSM Errors ===")
+              print(stderr)
+              raise SystemExit(f"Deployment FAILED with status: {status}")
+
+          print("Deployment completed successfully!")
+          PYEOF
