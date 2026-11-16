@@ -1,0 +1,33 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "title": "Container Resource Utilization (cAdvisor)",
+  "panels": [
+    {
+      "title": "Per-Container CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total{name!=\"\"}[1m])) by (name)", "legendFormat": "{{name}}" }]
+    },
+    {
+      "title": "Per-Container Memory Usage (Bytes)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "container_memory_usage_bytes{name!=\"\"}", "legendFormat": "{{name}}" }]
+    },
+    {
+      "title": "Memory Usage Relative to Configured Limit (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "(container_memory_usage_bytes{name!=\"\"} / container_spec_memory_limit_bytes{name!=\"\"}) * 100",
+          "legendFormat": "{{name}} (% of Limit)"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["containers", "cadvisor"],
+  "time": { "from": "now-15m", "to": "now" }
+}
