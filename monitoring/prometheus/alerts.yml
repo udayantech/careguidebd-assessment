@@ -1,0 +1,59 @@
+groups:
+  - name: devops_platform_alerts
+    rules:
+      # 1. App Instance Down
+      - alert: AppInstanceDown
+        expr: up{job="devops-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Application service instance is down"
+          description: "devops-service has been unreachable for more than 1 minute."
+
+      # 2. High Error Rate (> 5% of total requests)
+      - alert: HighHttpErrorRate
+        expr: |
+          (
+            sum(rate(http_errors_total[2m])) 
+            / 
+            sum(rate(http_requests_total[2m]))
+          ) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated HTTP 4xx/5xx error rate"
+          description: "HTTP error rate is at {{ $value | printf \"%.2f\" }}% for over 2 minutes."
+
+      # 3. Host Disk Usage > 80%
+      - alert: HostDiskFillingUp
+        expr: |
+          (
+            1 - (
+              node_filesystem_avail_bytes{mountpoint="/rootfs"} 
+              / 
+              node_filesystem_size_bytes{mountpoint="/rootfs"}
+            )
+          ) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host storage utilization exceeded 80%"
+          description: "Host disk usage on rootfs is currently at {{ $value | printf \"%.2f\" }}%."
+
+      # 4. Container Memory Near Limit (> 85%)
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          (
+            container_memory_usage_bytes{name="devops-service"} 
+            / 
+            container_spec_memory_limit_bytes{name="devops-service"}
+          ) * 100 > 85
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container memory close to cgroup ceiling"
+          description: "Container {{ $labels.name }} is using {{ $value | printf \"%.2f\" }}% of its 256MB memory limit."
