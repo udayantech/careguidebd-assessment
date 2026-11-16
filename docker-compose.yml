@@ -1,30 +1,176 @@
 services:
+  # -------------------------------------------------------------
+  # Application Service (Exposed to Host)
+  # -------------------------------------------------------------
   app:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        VERSION: "1.0.0"
-    image: devops-service-node:local
     container_name: devops-service
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:8080"
     environment:
       - APP_PORT=8080
       - APP_LOG_LEVEL=info
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-production}
     restart: unless-stopped
     deploy:
       resources:
         limits:
           cpus: "0.50"
           memory: 256M
-        reservations:
-          cpus: "0.10"
-          memory: 64M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+    networks:
+      - internal_monitoring
+
+  # -------------------------------------------------------------
+  # 1. Prometheus (Internal Only - 15-Day Explicit Retention)
+  # -------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    # No ports exposed to host - internal access only
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    networks:
+      - internal_monitoring
+
+  # -------------------------------------------------------------
+  # 2. Grafana (Exposed to Host - Credentials from Env)
+  # -------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-AdminSecure2024!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - internal_monitoring
+
+  # -------------------------------------------------------------
+  # 3. Loki (Internal Only - 168h / 7-Day Explicit Retention)
+  # -------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    volumes:
+      - ./monitoring/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    networks:
+      - internal_monitoring
+
+  # -------------------------------------------------------------
+  # 4. Grafana Alloy (Internal Only - Docker Log Discovery)
+  # -------------------------------------------------------------
+  alloy:
+    image: grafana/alloy:v1.1.0
+    container_name: alloy
+    volumes:
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 256M
+    depends_on:
+      - loki
+    networks:
+      - internal_monitoring
+
+  # -------------------------------------------------------------
+  # 5. Node Exporter (Internal Only - Host OS Metrics)
+  # -------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 128M
+    networks:
+      - internal_monitoring
+
+  # -------------------------------------------------------------
+  # 6. cAdvisor (Internal Only - Container cgroup Metrics)
+  # -------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 256M
+    networks:
+      - internal_monitoring
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
+networks:
+  internal_monitoring:
+    driver: bridge
