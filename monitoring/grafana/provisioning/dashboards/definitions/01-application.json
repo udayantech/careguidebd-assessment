@@ -1,0 +1,48 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "title": "Application Metrics & Correlated Logs",
+  "panels": [
+    {
+      "title": "Request Rate (RPS)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(http_requests_total[1m])) by (path)", "legendFormat": "{{path}}" }]
+    },
+    {
+      "title": "Error Rate (HTTP 4xx/5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "sum(rate(http_errors_total[1m])) or vector(0)", "legendFormat": "Errors/sec" }]
+    },
+    {
+      "title": "Request Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "title": "Correlated Application Logs (Loki Live Stream)",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "loki", "uid": "Loki" },
+      "targets": [
+        { "expr": "{container=\"devops-service\"} | json" }
+      ],
+      "options": {
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["application", "loki", "prometheus"],
+  "time": { "from": "now-15m", "to": "now" }
+}
