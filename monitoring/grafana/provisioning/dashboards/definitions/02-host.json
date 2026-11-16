@@ -1,0 +1,37 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "title": "Host OS & Infrastructure (Node Exporter)",
+  "panels": [
+    {
+      "title": "Host CPU Utilization",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "CPU Used %" }]
+    },
+    {
+      "title": "Host Memory Utilization",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100", "legendFormat": "Memory Used %" }]
+    },
+    {
+      "title": "Host Disk Usage (%)",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{ "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/rootfs\"} / node_filesystem_size_bytes{mountpoint=\"/rootfs\"})) * 100", "legendFormat": "Disk Used %" }]
+    },
+    {
+      "title": "Network Traffic (In/Out)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(node_network_receive_bytes_total[1m]))", "legendFormat": "Receive Bytes/s" },
+        { "expr": "sum(rate(node_network_transmit_bytes_total[1m]))", "legendFormat": "Transmit Bytes/s" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["host", "node-exporter"],
+  "time": { "from": "now-30m", "to": "now" }
+}
