@@ -1,0 +1,50 @@
+// 1. Discover all Docker containers running on the host
+discovery.docker "docker_containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// 2. Relabel container name to clean label
+discovery.relabel "container_labels" {
+  targets = discovery.docker.docker_containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+// 3. Collect logs from all containers
+loki.source.docker "docker_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.container_labels.output
+  forward_to = [loki.process.parse_logs.receiver]
+}
+
+// 4. Parse Structured JSON logs (Extract level while keeping cardinality low)
+loki.process "parse_logs" {
+  // Attempt to parse JSON log line
+  stage.json {
+    expressions = {
+      level = "level",
+      msg   = "msg",
+      path  = "path",
+    }
+  }
+
+  // Promote only 'level' to an indexed label (finite: debug, info, warn, error)
+  stage.labels {
+    values = {
+      level = "level",
+    }
+  }
+
+  forward_to = [loki.write.local_loki.receiver]
+}
+
+// 5. Send to Loki Internal Push Endpoint
+loki.write "local_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
