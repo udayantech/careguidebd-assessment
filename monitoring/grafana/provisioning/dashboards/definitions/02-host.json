@@ -19,7 +19,7 @@
       "title": "Host Disk Usage (%)",
       "type": "gauge",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "targets": [{ "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/rootfs\"} / node_filesystem_size_bytes{mountpoint=\"/rootfs\"})) * 100", "legendFormat": "Disk Used %" }]
+      "targets": [{ "expr": "100 - ((node_filesystem_avail_bytes{fstype=~\"ext4|xfs|btrfs\"} * 100) / node_filesystem_size_bytes{fstype=~\"ext4|xfs|btrfs\"})" }]
     },
     {
       "title": "Network Traffic (In/Out)",
