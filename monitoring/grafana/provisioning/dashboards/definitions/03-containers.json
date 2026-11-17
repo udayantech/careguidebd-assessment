@@ -9,7 +9,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{name!=\"\"}[1m])) by (name)",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{id=~\".*\"}[1m])) by (name)",
           "legendFormat": "{{name}}"
         }
       ]
@@ -20,7 +20,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "container_memory_usage_bytes{name!=\"\"}",
+          "expr": "sum(container_memory_usage_bytes{id=~\".*\"}) by (name)",
           "legendFormat": "{{name}}"
         }
       ]
@@ -31,7 +31,7 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "(container_memory_usage_bytes{name!=\"\"} / on(name) container_spec_memory_limit_bytes{name!=\"\"}) * 100 > 0",
+          "expr": "(sum(container_memory_usage_bytes) by (name) / sum(container_spec_memory_limit_bytes > 0) by (name)) * 100",
           "legendFormat": "{{name}} (% of Limit)"
         }
       ]
