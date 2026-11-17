@@ -60,6 +60,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-AdminSecure2024!}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
     restart: unless-stopped
     deploy:
