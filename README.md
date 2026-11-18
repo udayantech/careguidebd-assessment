@@ -42,20 +42,20 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
                       o	Enable automated SSL/TLS termination with certificates managed through AWS Certificate Manager (ACM).
                       o	Attach AWS WAF (Web Application Firewall) to block DDoS and malicious traffic at the edge.
    
-              2.	Secrets Management (External Secrets Operator & AWS Secrets Manager):
+              2. Secrets Management (External Secrets Operator & AWS Secrets Manager):
                       o	Avoid raw Kubernetes Secret objects in Git or etcd.
                       o	Deploy the External Secrets Operator (ESO) to automatically synchronize secrets from AWS Secrets Manager or HashiCorp Vault.
                       o	Secrets are encrypted at rest with AWS KMS customer-managed keys (CMK) and rotated automatically.
        
-              3.	Node Autoscaling (Karpenter):
+              3. Node Autoscaling (Karpenter):
                       o	Replace static virtual machines with Karpenter (or Cluster Autoscaler).
                       o	When HPA scales out pod replicas and pending pods occur, Karpenter provisions right-sized, cost-effective EC2 Spot or On-Demand instances in under 45 seconds.
    
-              4.	IAM Roles for Service Accounts (IRSA / EKS Pod Identity):
+              4. IAM Roles for Service Accounts (IRSA / EKS Pod Identity):
                       o	Pods requiring AWS access (e.g. S3, DynamoDB, SQS) should never use static AWS access keys.
                       o	Use EKS Pod Identity or IRSA to bind Kubernetes ServiceAccounts directly to AWS IAM roles using short-lived OIDC tokens.
        
-              5.	Multi-AZ High Availability & Pod Disruption Budgets:
+              5. Multi-AZ High Availability & Pod Disruption Budgets:
                       o	Spread pods across multiple AWS Availability Zones using topologySpreadConstraints.
                       o	Implement a PodDisruptionBudget (PDB) ensuring at least minAvailable: 1 during node maintenance or Kubernetes cluster upgrades.
 
