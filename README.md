@@ -61,5 +61,20 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
 
    GitHub Action Pipeline Secreenshot: 
 
-![Dashboard 1](Images/Grafana-Loki.png)
+![Dashboard 1](images/Build-docker-image-and-deploy-to-EC2-by-SSM.png)
+![Dashboard 1](images/Github-Action-deploy-to-EC2 by-SSM.png)
+![Dashboard 1](images/App-browse-by deployed-by-Github-Action-pipeline.png)
+![Dashboard 1](images/GitHub-Secret.png)
+![Dashboard 1](images/Terraform-apply-Successful.png)
+![Dashboard 1](images/Grafana-three-dashboards-Application-Host-Containers.png)
+![Dashboard 1](images/Observability-Stack-deployment-Github-Action-pipeline.png)
+![Dashboard 1](images/grafana-02.png)
+![Dashboard 1](images/Grafana-Alerting.png)
+![Dashboard 1](images/Grafana-Cantainer-Dashboard.png)
+![Dashboard 1](images/Grafana-Loki.png)
+![Dashboard 1](images/Rolling-update.png)
+![Dashboard 1](images/grafana-container.png)
+![Dashboard 1](images/Rollback.png)
+![Dashboard 1](images/RollBack-status.png)
+![Dashboard 1](images/Rollback.png)
 
