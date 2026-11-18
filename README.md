@@ -33,11 +33,11 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
    * Fix the offending code regression or adjust container resource limits in `docker-compose.monitoring.yml`.
    * Observe the Application dashboard to verify that the Error Rate drops to 0 RPS and p99 latency normalizes below 50ms.
 
-2. Production Evolution: Moving from Kubeadm to Amazon EKS
+2. **Production Evolution: Moving from Kubeadm to Amazon EKS**
    
-      To run this workload in a production enterprise environment on Amazon EKS, the following changes would be implemented:
+      **To run this workload in a production enterprise environment on Amazon EKS, the following changes would be implemented:**
    
-              1.	Ingress & Traffic Routing (AWS Load Balancer Controller):
+              1. Ingress & Traffic Routing (AWS Load Balancer Controller):
                       o	Replace NodePort with an AWS Application Load Balancer (ALB) provisioned automatically via the aws-load-balancer-controller.
                       o	Enable automated SSL/TLS termination with certificates managed through AWS Certificate Manager (ACM).
                       o	Attach AWS WAF (Web Application Firewall) to block DDoS and malicious traffic at the edge.
