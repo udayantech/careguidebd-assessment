@@ -15,6 +15,7 @@ env:
 jobs:
   build-and-push:
     name: Multi-Arch Build & Push to Docker Hub
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
@@ -67,6 +68,7 @@ jobs:
   deploy:
     name: Deploy Full Stack via AWS Systems Manager
     needs: build-and-push
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS Credentials (OIDC)
