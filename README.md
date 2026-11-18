@@ -61,5 +61,5 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
 
    GitHub Action Pipeline Secreenshot: 
 
-![Dashboard 1](Images/Build docker image and deploy to EC2 by SSM.png)
+![Dashboard 1](Images/Grafana-Loki.png)
 
