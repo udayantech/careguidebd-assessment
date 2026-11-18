@@ -59,3 +59,7 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
                       o	Spread pods across multiple AWS Availability Zones using topologySpreadConstraints.
                       o	Implement a PodDisruptionBudget (PDB) ensuring at least minAvailable: 1 during node maintenance or Kubernetes cluster upgrades.
 
+   GitHub Action Pipeline Secreenshot: 
+
+![Dashboard 1](Images/Build docker image and deploy to EC2 by SSM.png)
+
