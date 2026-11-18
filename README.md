@@ -69,7 +69,13 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
 
 ![Dashboard 1](images/GitHub-Secret.png)
 
+
+Terraform Secreenshot:
+
 ![Dashboard 1](images/Terraform-apply-Successful.png)
+
+
+Observability Secreenshot: 
 
 ![Dashboard 1](images/Grafana-three-dashboards-Application-Host-Containers.png)
 
@@ -83,9 +89,12 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
 
 ![Dashboard 1](images/Grafana-Loki.png)
 
-![Dashboard 1](images/Rolling-update.png)
-
 ![Dashboard 1](images/grafana-container.png)
+
+
+Kubernetes Secreenshot:
+
+![Dashboard 1](images/Rolling-update.png)
 ![Dashboard 1](images/Rollback.png)
 ![Dashboard 1](images/RollBack-status.png)
 ![Dashboard 1](images/Rollback.png)
