@@ -36,6 +36,7 @@ When an on-call engineer receives an `HighHttpErrorRate` alert or observes an er
 2. Production Evolution: Moving from Kubeadm to Amazon EKS
    
       To run this workload in a production enterprise environment on Amazon EKS, the following changes would be implemented:
+   
               1.	Ingress & Traffic Routing (AWS Load Balancer Controller)
                   o	Replace NodePort with an AWS Application Load Balancer (ALB) provisioned automatically via the aws-load-balancer-controller.
                   o	Enable automated SSL/TLS termination with certificates managed through AWS Certificate Manager (ACM).
